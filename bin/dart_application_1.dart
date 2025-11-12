@@ -10,6 +10,11 @@ class Board {
   List<List<CellState>> grid =
       List.generate(boardSize, (_) => List.filled(boardSize, CellState.empty));
 
+  int totalShips = 0;
+  int destroyedShips = 0;
+  int hits = 0;
+  int misses = 0;
+
   bool canPlaceShip(int x, int y, int size, bool horizontal) {
     if (horizontal) {
       if (x + size > boardSize) return false;
@@ -31,25 +36,15 @@ class Board {
   }
 
   bool placeShip(int x, int y, int size, bool horizontal) {
-    if (!canPlaceShip(x, y, size, horizontal)) {
-      return false;
-    }
+    if (!canPlaceShip(x, y, size, horizontal)) return false;
 
     for (int i = 0; i < size; i++) {
-      int cx;
-      int cy;
-
-      if (horizontal) {
-        cx = x + i;
-        cy = y;
-      } else {
-        cx = x;
-        cy = y + i;
-      }
-
+      int cx = horizontal ? x + i : x;
+      int cy = horizontal ? y : y + i;
       grid[cy][cx] = CellState.ship;
     }
 
+    totalShips++;
     return true;
   }
 
@@ -69,11 +64,34 @@ class Board {
   bool receiveShot(int x, int y) {
     if (grid[y][x] == CellState.ship) {
       grid[y][x] = CellState.hit;
+      hits++;
+
+      // Проверяем, не уничтожен ли корабль полностью
+      if (_isShipDestroyed(x, y)) {
+        destroyedShips++;
+      }
       return true;
     } else if (grid[y][x] == CellState.empty) {
       grid[y][x] = CellState.miss;
+      misses++;
     }
     return false;
+  }
+
+  bool _isShipDestroyed(int x, int y) {
+    // Проверяет, есть ли ещё части корабля по соседству
+    for (int dy = -1; dy <= 1; dy++) {
+      for (int dx = -1; dx <= 1; dx++) {
+        int cx = x + dx;
+        int cy = y + dy;
+        if (cx >= 0 && cx < boardSize && cy >= 0 && cy < boardSize) {
+          if (grid[cy][cx] == CellState.ship) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
   }
 
   bool allShipsSunk() {
@@ -84,6 +102,8 @@ class Board {
     }
     return true;
   }
+
+  int remainingShips() => totalShips - destroyedShips;
 
   void printBoard({bool hideShips = false}) {
     stdout.write('  ');
@@ -182,10 +202,12 @@ class Game {
       if (playerBoard.allShipsSunk()) {
         print('\nВсе ваши корабли уничтожены!');
         print('Компьютер победил!');
+        _saveStats(winner: "Компьютер", playerScore: playerScore, computerScore: computerScore);
         break;
       }
       if (computerBoard.allShipsSunk()) {
         print('\nВы победили!');
+        _saveStats(winner: "Игрок", playerScore: playerScore, computerScore: computerScore);
         break;
       }
 
@@ -228,6 +250,40 @@ class Game {
       }
     }
     print('\nВсе корабли расставлены!');
+  }
+
+  void _saveStats({
+    required String winner,
+    required int playerScore,
+    required int computerScore,
+  }) {
+    final dir = Directory('stats');
+    if (!dir.existsSync()) dir.createSync();
+
+    final file = File('${dir.path}/battle_stats.txt');
+
+    final stats = '''
+-----------------------------------------------------------------
+Победитель: $winner
+
+Игрок:
+  Попаданий: ${playerBoard.hits}
+  Промахов: ${playerBoard.misses}
+  Уничтожено кораблей: ${playerBoard.destroyedShips}
+  Осталось кораблей: ${playerBoard.remainingShips()}
+
+Компьютер:
+  Попаданий: ${computerBoard.hits}
+  Промахов: ${computerBoard.misses}
+  Уничтожено кораблей: ${computerBoard.destroyedShips}
+  Осталось кораблей: ${computerBoard.remainingShips()}
+
+Счёт по попаданиям: Игрок $playerScore — Компьютер $computerScore
+------------------------------------------------------------------
+''';
+
+    file.writeAsStringSync(stats);
+    print('\nСтатистика сохранена');
   }
 }
 
